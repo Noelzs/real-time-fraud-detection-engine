@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import time
 from datetime import datetime
-from model_utils import load_model_version, load_current_model, list_model_versions
+from model_utils import load_model_version, list_model_versions
 
 def live_fraud_demo(model, features, transaction_data, max_transactions=10000, speed='fast', threshold=0.01):
     """Running a live simulation"""
@@ -54,7 +54,7 @@ def live_fraud_demo(model, features, transaction_data, max_transactions=10000, s
         # Only show details in slow/medium mode, or when fraud is detected
         if speed in ['slow', 'medium'] or is_fraud or is_actual_fraud:
             print(f"{alert_icon} Transaction {total_count:04d} | "
-                  f"Amount: ₹{row['TransactionAmt']:8.2f} | "
+                  f"Amount: {row['TransactionAmt']:8.2f} | "
                   f"Fraud Prob: {fraud_prob:.3f} | "
                   f"Time: {datetime.now().strftime('%H:%M:%S')}")
             
@@ -95,57 +95,28 @@ def live_fraud_demo(model, features, transaction_data, max_transactions=10000, s
     print(f"Fraud detection rate: {detected_frauds/(detected_frauds + missed_frauds)*100:.1f}%")
 
 def main():
-    """Main function with user choice"""
+    """Main function - simplified version selection"""
     print("🛡️  FRAUD DETECTION DEMO LAUNCHER")
     print("="*50)
     
     # Show available versions
     list_model_versions()
     
-    print("\nChoose loading option:")
-    print("1. Load current/latest model")
-    print("2. Load specific version")
-    print("3. Exit")
+    # Get version name
+    version_name = input("\nEnter version name (e.g., v5_xg_20251109_154848): ").strip()
+    print(f"\nLoading version: {version_name}")
     
-    choice = input("\nEnter your choice (1-3): ").strip()
+    result = load_model_version(version_name)
+    if result is None:
+        return
     
-    if choice == "1":
-        print("\nLoading current model...")
-        model, features = load_current_model()
-        print(f"✅ Loaded model type: {model.__class__.__name__}")
-        version_info = "Current Model"
-        
-    elif choice == "2":
-        version_name = input("Enter version name (e.g., v1_20241215_143022): ").strip()
-        print(f"\nLoading version: {version_name}")
-        result = load_model_version(version_name)
-        if result is None:
-            return
-        model, features, performance = result
-        version_info = f"Version: {version_name} (AUC: {performance['roc_auc']:.3f})"
-        
-    elif choice == "3":
-        print("Goodbye!")
-        return
-    else:
-        print("Invalid choice!")
-        return
+    model, features, performance = result
+    version_info = f"Version: {version_name} (AUC: {performance['roc_auc']:.3f})"
     
     # Load demo data
     try:
-        if choice == "1":
-            import glob
-            version_dirs = glob.glob("model_versions/v*")
-            if version_dirs:
-                latest_version = sorted(version_dirs)[-1]
-                demo_data_path = f"{latest_version}/demo_data.csv"
-                demo_data = pd.read_csv(demo_data_path)
-            else:
-                print("❌ No demo data found! Train a model first.")
-                return
-        else:
-            demo_data_path = f"model_versions/{version_name}/demo_data.csv"
-            demo_data = pd.read_csv(demo_data_path)
+        demo_data_path = f"model_versions/{version_name}/demo_data.csv"
+        demo_data = pd.read_csv(demo_data_path)
     except Exception as e:
         print(f"❌ Error loading demo data: {e}")
         return
@@ -154,46 +125,28 @@ def main():
     print(f"📁 Features: {len(features['feature_names'])}")
     print(f"📊 Demo transactions available: {len(demo_data)}")
     
-    # Speed choice
+    # Speed choice (default to fast)
     print("\nChoose processing speed:")
     print("1. Slow (1s delay - good for presentations)")
-    print("2. medium (0.1s delay - balanced)") 
-    print("3. fast (0.01s delay - 1000 transactions in ~10 seconds)")
+    print("2. Medium (0.1s delay - balanced)") 
+    print("3. Fast (0.01s delay - 1000 transactions in ~10 seconds) [DEFAULT]")
     
-    speed_choice = input("\nEnter speed choice (1-3): ").strip()
+    speed_choice = input("\nEnter speed choice (1-3, default 3): ").strip()
     speed_map = {'1': 'slow', '2': 'medium', '3': 'fast'}
     speed = speed_map.get(speed_choice, 'fast')
     
-    # Transaction count
+    # Transaction count (default to 10,000)
     try:
-        max_tx = int(input(f"\nEnter number of transactions to process (1-{len(demo_data)}): ") or "1000")
+        max_tx = int(input(f"\nEnter number of transactions to process (1-{len(demo_data)}, default 10000): ") or "10000")
         max_tx = min(max_tx, len(demo_data))
     except:
-        max_tx = 1000
-
-    '''
-    # Add threshold choice
-    print("\nChoose detection sensitivity:")
-    print("1. High precision (threshold: 0.5) - Fewer false alarms")
-    print("2. Balanced (threshold: 0.3) - Good mix")
-    print("3. High recall (threshold: 0.2) - Catch more fraud")
-    print("4. Custom threshold")
+        max_tx = 10000
     
-    threshold_choice = input("\nEnter choice (1-4): ").strip()
-    
-    if threshold_choice == "1":
-        threshold = 0.5
-    elif threshold_choice == "2":
-        threshold = 0.3  
-    elif threshold_choice == "3":
-        threshold = 0.2
-    elif threshold_choice == "4":'''
+    # Transaction threshold
     try:
-        threshold = float(input("Enter custom threshold (0.01-0.99): "))
+        threshold = float(input("Enter custom threshold (0.01-0.99, default 0.063): ") or "0.063")
     except:
-        threshold = 0.01
-    '''else:
-        threshold = 0.3'''
+        threshold = 0.063
     
     print(f"🎯 Using detection threshold: {threshold}")
     
