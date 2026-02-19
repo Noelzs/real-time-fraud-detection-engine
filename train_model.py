@@ -36,16 +36,11 @@ def create_real_time_features(df):
     
     # Sort by time for rolling calculations
     df = df.sort_values('TransactionDT').reset_index(drop=True)
-    
+   
     # Feature 1: Amount deviation (user-level)
     user_median_amount = df.groupby('card1')['TransactionAmt'].transform('median')
     df['amount_deviation_ratio'] = df['TransactionAmt'] / (user_median_amount + 1)
     
-    '''# Feature 2: Transaction velocity (last "24 hours" - simulated)
-    # Since we can't do true rolling in static data, we'll approximate
-    df['tx_velocity_24h'] = df.groupby('card1')['TransactionDT'].transform(
-        lambda x: x.rolling(86400, min_periods=1).count()  # 24 hours in seconds
-    )'''
     # Feature 2: User transaction count (simpler and more reliable)
     df['tx_count_user'] = df.groupby('card1')['TransactionID'].transform('count')
     
@@ -59,40 +54,35 @@ def create_real_time_features(df):
     df['user_common_hour'] = df['card1'].map(user_common_hour)
     df['unusual_time'] = (abs(df['hour_of_day'] - df['user_common_hour']) > 4).astype(int)
 
-    return df
-'''
+     # User's normal spending patterns (NEW - replaces old approach)
+    df['user_amount_95th'] = df.groupby('card1')['TransactionAmt'].transform(
+    lambda x: x.quantile(0.95) if len(x) > 10 else x.median())
+
+    df['amount_vs_normal'] = df['TransactionAmt'] / df['user_amount_95th']
+
+    # Better time deviation (NEW - replaces unusual_time)
+    df['hour_deviation'] = abs(df['hour_of_day'] - df['user_common_hour'])
+    
     # Feature 5: High-risk product categories
-    high_risk_products = ['W', 'S']  # Based on your feature importance
-    df['high_risk_product'] = df['ProductCD'].isin(high_risk_products).astype(int)
-    
-    # Feature 6: Transaction amount categories
-    df['amount_category'] = pd.cut(df['TransactionAmt'], 
-                                  bins=[0, 100, 500, 2000, float('inf')],
-                                  labels=[0, 1, 2, 3])
-    
-    # Time since last transaction (HUGE for fraud)
+    df['high_risk_product'] = df['ProductCD'].isin(['W', 'S']).astype(int)
+
+    # Feature 6: Time since last transaction (HUGE for fraud)
     df['time_since_last_tx'] = df.groupby('card1')['TransactionDT'].diff()
 
-    # Transaction frequency changes
-    df['tx_frequency_change'] = df.groupby('card1')['time_since_last_tx'].transform(
-        lambda x: x.rolling(5).std() / x.rolling(5).mean()  # Coefficient of variation
-    )
-
-    # Hourly patterns deviation
-    df['hour_deviation'] = df.groupby('card1')['hour_of_day'].transform(
-        lambda x: abs(x.iloc[-1] - x.mean()) if len(x) > 1 else 0
-    )
-
-    # User's "normal" amount range
-    df['user_amount_std'] = df.groupby('card1')['TransactionAmt'].transform('std')
-    df['amount_zscore'] = (df['TransactionAmt'] - df.groupby('card1')['TransactionAmt'].transform('mean')) / df['user_amount_std']
+    # Instead of time-based rolling, use count-based rolling
+    df['tx_frequency_change'] = df.groupby('card1')['TransactionAmt'].transform(
+    lambda x: x.rolling(5, min_periods=1).std() / (x.rolling(5, min_periods=1).mean() + 1))
 
     # Merchant risk profiling
     merchant_fraud_rates = df.groupby('ProductCD')['isFraud'].mean()
     df['merchant_risk_score'] = df['ProductCD'].map(merchant_fraud_rates)
     
     return df
-'''
+
+# Add this BEFORE calling create_real_time_features()
+df = df.sample(100000, random_state=42)  # Use 100K samples for training
+print(f"Sampled data: {df.shape}")
+
 print("Creating real-time features...")
 df = create_real_time_features(df)
 
@@ -177,9 +167,8 @@ model.fit(X_train, y_train)
 y_pred_proba = model.predict_proba(X_test)[:, 1]
 y_pred = (y_pred_proba > 0.5).astype(int)
 
-# =============================================================================
-# 🚀 ADD XGBOOST COMPARISON HERE
-# =============================================================================
+# XGBOOST COMPARISON
+
 print("\n" + "="*50)
 print("🧪 XGBOOST COMPARISON")
 print("="*50)
